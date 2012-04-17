@@ -43,10 +43,14 @@ def print_chain(chain):
                 targets[target] += 1
             except KeyError:
                 targets[target] = 1
-        targs = [t if targets[t] == 1 else "{0}x {1}".format(targets[t], t) for t in targets]
+        targs = []
+        for optarget, count in targets.iteritems():
+            if count == 1:
+                targs.append(optarget)
+            else:
+                targs.append("{0}x {1}".format(count, optarget))
         targs.sort()
-        tstring = ", ".join(targs)
-        print op.rjust(20), "=> [{0}]".format(tstring)
+        print op.rjust(20), "=> [{0}]".format(", ".join(targs))
     print "}"
 
 def print_function(func):
@@ -57,11 +61,11 @@ def print_function(func):
     while i < n:
         op = ord(code[i])
         i += 1
-        print " " * 8 + opcode.opname[op].ljust(18),
+        print opcode.opname[op].rjust(20),
         if op >= opcode.HAVE_ARGUMENT:
             arg = _get_argument(co, code, i, op)
             i += 2
-            print arg
+            print " ({0})".format(arg)
         else:
             print
 
@@ -121,8 +125,8 @@ def _make_codes(chain):
                 args = opcode.cmp_op
             else:
                 raise NotImplementedError(op, opcode.opname[op])
-            codes.append(args.index(arg))
-            codes.append(0)
+            codes.append(args.index(arg) % 256)
+            codes.append(args.index(arg) // 256)
         code = random.choice(chain[op])
     return codes, tuple(constants), tuple(varnames)
 
