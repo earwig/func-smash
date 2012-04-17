@@ -26,6 +26,8 @@ def make_chain(funcs):
                     arg = co.co_consts[oparg]
                 elif op in opcode.haslocal:
                     arg = co.co_varnames[oparg]
+                elif op in opcode.hascompare:
+                    arg = opcode.cmp_op[oparg]
                 else:
                     raise NotImplementedError(op, opcode.opname[op])
             else:
@@ -69,13 +71,17 @@ def _make_codes(chain):
         codes.append(op)
         if op >= opcode.HAVE_ARGUMENT:
             if op in opcode.hasconst:
+                if arg not in constants:
+                    constants.append(arg)
                 args = constants
             elif op in opcode.haslocal:
+                if arg not in varnames:
+                    varnames.append(arg)
                 args = varnames
+            elif op in opcode.hascompare:
+                args = opcode.cmp_op
             else:
                 raise NotImplementedError(op, opcode.opname[op])
-            if arg not in args:
-                args.append(arg)
             codes.append(args.index(arg))
             codes.append(0)
         code = random.choice(chain[op])
