@@ -1,4 +1,3 @@
-import dis
 import opcode
 import random
 import types
@@ -11,7 +10,7 @@ MARKOV_END = -2
 def make_chain(funcs):
     chain = {}
     for func in funcs:
-        _disassemble_func(func, chain)
+        _parse_func(func, chain)
     return chain
 
 def make_function(chain, name, argcount=1):
@@ -50,7 +49,23 @@ def print_chain(chain):
         print op.rjust(20), "=> [{0}]".format(tstring)
     print "}"
 
-def _disassemble_func(func, chain):
+def print_function(func):
+    co = func.__code__
+    code = co.co_code
+    n = len(code)
+    i = 0
+    while i < n:
+        op = ord(code[i])
+        i += 1
+        print " " * 8 + opcode.opname[op].ljust(18),
+        if op >= opcode.HAVE_ARGUMENT:
+            arg = _get_argument(co, code, i, op)
+            i += 2
+            print arg
+        else:
+            print
+
+def _parse_func(func, chain):
     co = func.__code__
     code = co.co_code
     n = len(code)
@@ -60,21 +75,23 @@ def _disassemble_func(func, chain):
         op = ord(code[i])
         i += 1
         if op >= opcode.HAVE_ARGUMENT:
-            oparg = ord(code[i]) + ord(code[i + 1]) * 256
+            arg = _get_argument(co, code, i, op)
             i += 2
-            if op in opcode.hasconst:
-                arg = co.co_consts[oparg]
-            elif op in opcode.haslocal:
-                arg = co.co_varnames[oparg]
-            elif op in opcode.hascompare:
-                arg = opcode.cmp_op[oparg]
-            else:
-                raise NotImplementedError(op, opcode.opname[op])
         else:
             arg = None
         _chain_append(chain, lastop, (op, arg))
         lastop = op
     _chain_append(chain, op, (MARKOV_END, None))
+
+def _get_argument(co, code, i, op):
+    oparg = ord(code[i]) + ord(code[i + 1]) * 256
+    if op in opcode.hasconst:
+        return co.co_consts[oparg]
+    elif op in opcode.haslocal:
+        return co.co_varnames[oparg]
+    elif op in opcode.hascompare:
+        return opcode.cmp_op[oparg]
+    raise NotImplementedError(op, opcode.opname[op])
 
 def _chain_append(chain, first, second):
     try:
@@ -119,34 +136,39 @@ def _int_to_opname(op):
 ############## FUNCTION CORPUS ################################################
 
 def f1(a):
-    b = a + 7.0
+    b = a + 9.0
     return b
 
 def f2(a):
-    b = a - 5.0
+    b = a - 7.0
     return b
 
 def f3(a):
-    b = a * 3.0
+    b = a * 5.0
     return b
 
 def f4(a):
-    b = a / 2.0
+    b = a / 3.0
     return b
 
-corpus = [f1, f2, f3, f4]
+def f5(a):
+    b = a ** 2.0
+    return b
+
+def f6(a):
+    b = a % 10.0
+    return b
+
+corpus = [f1, f2, f3, f4, f5, f6]
 
 ############## DEMO ###########################################################
 
 if __name__ == "__main__":
-    print "USING FUNCTION CORPUS:", [func.__name__ for func in corpus]
     chain = make_chain(corpus)
-    print
-
     func = make_function(chain, "func")
-    print "SMASHED FUNCTION CODE:", [ord(c) for c in func.__code__.co_code]
-    print "FUNCTION DISASSEMBLY:"
-    dis.dis(func)
+    print "Using {0}-function corpus.".format(len(corpus))
+    print "Smashed function disassembly:"
+    print_function(func)
     print
     n = 12.0
     print "func(%s) =" % n, func(n)
