@@ -11,14 +11,13 @@ MARKOV_END = -2
 def make_chain(funcs):
     chain = {}
     for func in funcs:
-        co = func.func_code
+        co = func.__code__
         code = co.co_code
         n = len(code)
         i = 0
         lastop = MARKOV_START
         while i < n:
-            c = code[i]
-            op = ord(c)
+            op = ord(code[i])
             i += 1
             if op >= opcode.HAVE_ARGUMENT:
                 oparg = ord(code[i]) + ord(code[i + 1]) * 256
@@ -111,7 +110,7 @@ if __name__ == "__main__":
     print
 
     func = make_function(chain, "func")
-    print "SMASHED FUNCTION CODE:", [ord(c) for c in func.func_code.co_code]
+    print "SMASHED FUNCTION CODE:", [ord(c) for c in func.__code__.co_code]
     print "FUNCTION DISASSEMBLY:"
     dis.dis(func)
     print
