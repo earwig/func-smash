@@ -15,7 +15,7 @@ def make_chain(funcs):
 
 def make_function(chain, name, argcount=1):
     codes, constants, varnames = _make_codes(chain)
-    nlocals = len(varnames) + argcount
+    nlocals = len(varnames)
     stacksize = 1024  # High limit?
     flags = 0  # Denotes funcs with *args and/or **kwargs; nothing for now
     codestring = "".join([chr(code) for code in codes])
