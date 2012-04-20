@@ -1,11 +1,46 @@
+import imp
 import opcode
+import os
 import random
+import re
+import sys
+import traceback
 import types
-
-############## CODE ###########################################################
 
 MARKOV_START = -1
 MARKOV_END = -2
+
+def run():
+    try:
+        path, name = os.path.split(sys.argv[1])
+        name = re.sub("\.pyc?$", "", name)
+    except IndexError:
+        raise RuntimeError("Needs a filename as a command-line argument")
+    f, path, desc = imp.find_module(name, [path])
+    try:
+        module = imp.load_module(name, f, path, desc)
+    finally:
+        f.close()
+
+    corpus = module.corpus
+    chain = make_chain(corpus)
+    func = make_function(chain, "func")
+    print "Using {0}-function corpus.".format(len(corpus))
+    print "Smashed function disassembly:"
+    print_function(func)
+    print
+    n = 12.0
+    print "func(%s) =" % n, func(n)
+ 
+    if len(sys.argv) > 2 and sys.argv[2] == "-i":  # Allow input after the fact
+        print
+        while 1:
+            try:
+                input(">>> ")
+            except EOFError:
+                break
+            except Exception:
+                traceback.print_exc()
 
 def make_chain(funcs):
     chain = {}
@@ -137,42 +172,5 @@ def _int_to_opname(op):
         return "END"
     return opcode.opname[op]
 
-############## FUNCTION CORPUS ################################################
-
-def f1(a):
-    b = a + 9.0
-    return b
-
-def f2(a):
-    b = a - 7.0
-    return b
-
-def f3(a):
-    b = a * 5.0
-    return b
-
-def f4(a):
-    b = a / 3.0
-    return b
-
-def f5(a):
-    b = a ** 2.0
-    return b
-
-def f6(a):
-    b = a % 10.0
-    return b
-
-corpus = [f1, f2, f3, f4, f5, f6]
-
-############## DEMO ###########################################################
-
 if __name__ == "__main__":
-    chain = make_chain(corpus)
-    func = make_function(chain, "func")
-    print "Using {0}-function corpus.".format(len(corpus))
-    print "Smashed function disassembly:"
-    print_function(func)
-    print
-    n = 12.0
-    print "func(%s) =" % n, func(n)
+    run()
