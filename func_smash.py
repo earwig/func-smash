@@ -17,8 +17,7 @@ def make_chain(funcs):
     return chain
 
 def make_function(chain, name, argcount=1):
-    codes, constants, varnames = _make_codes(chain)
-    names = ()
+    codes, constants, names, varnames = _make_codes(chain)
     codestring = "".join([chr(code) for code in codes])
     lnotab = ""
 
@@ -36,7 +35,7 @@ def print_chain(chain):
         for tcode in chain[code]:
             target = _opcode_to_opname(tcode[0])
             if tcode[0] >= opcode.HAVE_ARGUMENT:
-                target = "{0}({1})".format(target, tcode[1])
+                target = "{0}({1!r})".format(target, tcode[1])
             try:
                 target_counts[target] += 1
             except KeyError:
@@ -63,7 +62,7 @@ def print_function(func):
         if code >= opcode.HAVE_ARGUMENT:
             arg = _get_argument(codeobj, codestring, i, code)
             i += 2
-            print " ({0})".format(arg)
+            print " ({0!r})".format(arg)
         else:
             print
 
@@ -103,10 +102,14 @@ def _get_argument(codeobj, codestring, i, code):
     arg = ord(codestring[i]) + ord(codestring[i + 1]) * 256
     if code in opcode.hasconst:
         return codeobj.co_consts[arg]
+    elif code in opcode.hasname:
+        return codeobj.co_names[arg]
     elif code in opcode.haslocal:
         return codeobj.co_varnames[arg]
     elif code in opcode.hascompare:
         return opcode.cmp_op[arg]
+    elif code == opcode.opmap["CALL_FUNCTION"]:
+        return (ord(codestring[i]), ord(codestring[i + 1]))
     raise NotImplementedError(code, opcode.opname[code])
 
 def _chain_append(chain, first, second):
@@ -118,7 +121,7 @@ def _chain_append(chain, first, second):
 def _make_codes(chain):
     codes = []
     instruction = random.choice(chain[MARKOV_START])
-    constants, varnames = [], []
+    constants, names, varnames = [], [], []
     while 1:
         code, arg = instruction
         if code == MARKOV_END:
@@ -128,19 +131,24 @@ def _make_codes(chain):
             if code in opcode.hasconst:
                 if arg not in constants:
                     constants.append(arg)
-                args = constants
+                _coerce_arg_into_codes(codes, constants.index(arg))
+            elif code in opcode.hasname:
+                if arg not in names:
+                    names.append(arg)
+                _coerce_arg_into_codes(codes, names.index(arg))
             elif code in opcode.haslocal:
                 if arg not in varnames:
                     varnames.append(arg)
-                args = varnames
+                _coerce_arg_into_codes(codes, varnames.index(arg))
             elif code in opcode.hascompare:
-                args = opcode.cmp_op
+                _coerce_arg_into_codes(codes, opcode.cmp_op.index(arg))
+            elif code == opcode.opmap["CALL_FUNCTION"]:
+                codes.append(arg[0])
+                codes.append(arg[1])
             else:
                 raise NotImplementedError(code, opcode.opname[code])
-            codes.append(args.index(arg) % 256)
-            codes.append(args.index(arg) // 256)
         instruction = random.choice(chain[code])
-    return codes, tuple(constants), tuple(varnames)
+    return codes, tuple(constants), tuple(names), tuple(varnames)
 
 def _opcode_to_opname(code):
     if code == MARKOV_START:
@@ -148,6 +156,10 @@ def _opcode_to_opname(code):
     elif code == MARKOV_END:
         return "END"
     return opcode.opname[code]
+
+def _coerce_arg_into_codes(codes, arg):
+    codes.append(arg % 256)
+    codes.append(arg // 256)
 
 def _demo(corpus, arg=12.0):
     chain = make_chain(corpus)
