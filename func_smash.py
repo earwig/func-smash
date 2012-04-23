@@ -7,6 +7,11 @@ import re
 import sys
 import types
 
+OPMAP = opcode.opmap
+OP_HASCALL = [OPMAP[n] for n in ("CALL_FUNCTION", "CALL_FUNCTION_VAR",
+                                 "CALL_FUNCTION_KW", "CALL_FUNCTION_VAR_KW")]
+OP_MAKEFUNC = [OPMAP[n] for n in ("MAKE_FUNCTION", "MAKE_CLOSURE")]
+
 MARKOV_START = -1
 MARKOV_END = -2
 
@@ -108,8 +113,10 @@ def _get_argument(codeobj, codestring, i, code):
         return codeobj.co_varnames[arg]
     elif code in opcode.hascompare:
         return opcode.cmp_op[arg]
-    elif code == opcode.opmap["CALL_FUNCTION"]:
+    elif code in OP_HASCALL:
         return (ord(codestring[i]), ord(codestring[i + 1]))
+    elif code in OP_MAKEFUNC:
+        return arg
     raise NotImplementedError(code, opcode.opname[code])
 
 def _chain_append(chain, first, second):
@@ -142,9 +149,11 @@ def _make_codes(chain):
                 _coerce_arg_into_codes(codes, varnames.index(arg))
             elif code in opcode.hascompare:
                 _coerce_arg_into_codes(codes, opcode.cmp_op.index(arg))
-            elif code == opcode.opmap["CALL_FUNCTION"]:
+            elif code in OP_HASCALL:
                 codes.append(arg[0])
                 codes.append(arg[1])
+            elif code in OP_MAKEFUNC:
+                _coerce_arg_into_codes(codes, arg)
             else:
                 raise NotImplementedError(code, opcode.opname[code])
         instruction = random.choice(chain[code])
