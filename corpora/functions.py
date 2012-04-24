@@ -1,5 +1,5 @@
 def f1(a):
-    return str(a)
+    return int(a)
 
 def f2(a):
     return (lambda i: len(str(i)))(a)

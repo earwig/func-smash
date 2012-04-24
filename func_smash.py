@@ -8,9 +8,12 @@ import sys
 import types
 
 OPMAP = opcode.opmap
+OP_HASBUILD = [OPMAP[n] for n in ("BUILD_TUPLE", "BUILD_LIST", "BUILD_MAP",
+                                  "BUILD_SET")]
 OP_HASCALL = [OPMAP[n] for n in ("CALL_FUNCTION", "CALL_FUNCTION_VAR",
                                  "CALL_FUNCTION_KW", "CALL_FUNCTION_VAR_KW")]
 OP_HASMAKE = [OPMAP[n] for n in ("MAKE_FUNCTION", "MAKE_CLOSURE")]
+OP_LITERALARG = opcode.hasjabs + opcode.hasjrel + OP_HASBUILD + OP_HASMAKE
 
 MARKOV_START = -1
 MARKOV_END = -2
@@ -73,6 +76,8 @@ def print_function(func):
                 print " (to {0})".format(arg)
             elif code in opcode.hasjrel:
                 print " (+{0})".format(arg)
+            elif code in OP_HASBUILD:
+                print " ({0} items)".format(arg)
             elif code in OP_HASCALL:
                 print " ({0} args, {1} kwargs)".format(*arg)
             elif code in OP_HASMAKE:
@@ -98,6 +103,7 @@ def run():
 
 def _parse_func(func, chain):
     codeobj = func.__code__
+    print codeobj.co_argcount
     codestring = codeobj.co_code
     length = len(codestring)
     i = 0
@@ -124,13 +130,9 @@ def _get_argument(codeobj, codestring, i, code):
         return codeobj.co_varnames[arg]
     elif code in opcode.hascompare:
         return opcode.cmp_op[arg]
-    elif code in opcode.hasjabs:
-        return arg
-    elif code in opcode.hasjrel:
-        return arg - i - 2
     elif code in OP_HASCALL:
         return (ord(codestring[i]), ord(codestring[i + 1]))
-    elif code in OP_HASMAKE:
+    elif code in OP_LITERALARG:
         return arg
     raise NotImplementedError(code, opcode.opname[code])
 
@@ -144,15 +146,12 @@ def _make_codes(chain):
     codes = []
     instruction = random.choice(chain[MARKOV_START])
     constants, names, varnames = [], [], []
-    i = 0
     while 1:
-        i += 1
         code, arg = instruction
         if code == MARKOV_END:
             break
         codes.append(code)
         if code >= opcode.HAVE_ARGUMENT:
-            i += 2
             if code in opcode.hasconst:
                 if arg not in constants:
                     constants.append(arg)
@@ -167,14 +166,10 @@ def _make_codes(chain):
                 _coerce_arg_into_codes(codes, varnames.index(arg))
             elif code in opcode.hascompare:
                 _coerce_arg_into_codes(codes, opcode.cmp_op.index(arg))
-            elif code in opcode.hasjabs:
-                _coerce_arg_into_codes(codes, arg)
-            elif code in opcode.hasjrel:
-                _coerce_arg_into_codes(codes, arg + i)
             elif code in OP_HASCALL:
                 codes.append(arg[0])
                 codes.append(arg[1])
-            elif code in OP_HASMAKE:
+            elif code in OP_LITERALARG:
                 _coerce_arg_into_codes(codes, arg)
             else:
                 raise NotImplementedError(code, opcode.opname[code])
