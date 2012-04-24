@@ -103,7 +103,6 @@ def run():
 
 def _parse_func(func, chain):
     codeobj = func.__code__
-    print codeobj.co_argcount
     codestring = codeobj.co_code
     length = len(codestring)
     i = 0
@@ -193,10 +192,12 @@ def _demo(corpus, arg=12.0):
     print "Using {0}-function corpus.".format(len(corpus))
     print "Smashed function disassembly:"
     print_function(func)
-    print
-    print "func({0}) =".format(arg), func(arg)
 
-    if len(sys.argv) > 2 and sys.argv[2] == "-i":
+    if not len(sys.argv) > 2 or "n" not in "".join(sys.argv[2:]):
+        print
+        print "func({0}) =".format(arg), func(arg)
+
+    if len(sys.argv) > 2 and "i" in "".join(sys.argv[2:]):
         variables = dict(globals().items() + locals().items())
         interact(banner="", local=variables)
 
