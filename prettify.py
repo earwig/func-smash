@@ -34,10 +34,27 @@ def prettify_code(codeobj, indent=0):
 def _print_codestring(codes, indent):
     stack = []
     print_buffer = []
+    block_dedent_at = []
+    block_else_at = []
+    i = 0
     for instruction in codes:
         code, arg = instruction
         opname = opcode.opname[code]
-        _print(indent, opname, arg, "; stack ==", stack, debug=True)
+        if code >= opcode.HAVE_ARGUMENT:
+            i += 3
+        else:
+            i += 1
+        for x in block_dedent_at:
+            if i >= x:
+                indent -= 4
+                block_dedent_at.remove(x)
+        for x in block_else_at:
+            if i >= x:
+                _print(indent, "else:")
+                indent += 4
+                _print(indent, "pass")
+                block_else_at.remove(x)
+        _print(indent, i, opname, arg, debug=True)
         if opname in OP_HASLOAD:
             _push(stack, arg, literal=OP_HASLOAD[opname])
         elif opname in OP_HASBINARY:
@@ -55,13 +72,18 @@ def _print_codestring(codes, indent):
         elif opname == "STORE_FAST":
             _print(indent, arg, "=", _pop(stack))
         elif opname == "STORE_MAP":
-            pair = ": ".join((_pop(stack), _pop(stack)))
+            key, value = _pop(stack), _pop(stack)
+            pair = ": ".join((key, value))
             oldmap = _pop(stack)
             if oldmap == "{}":
                 newmap = "{" + pair + "}"
             else:
                 newmap = oldmap[:-1] + ", " + pair + "}"
             _push(stack, newmap)
+        elif opname == "LOAD_ATTR":
+            tos = _pop(stack)
+            new_tos = tos + "." + arg
+            _push(stack, new_tos)
         elif opname == "POP_TOP":
             _print(indent, _pop(stack))
         elif opname == "CALL_FUNCTION":
@@ -83,6 +105,20 @@ def _print_codestring(codes, indent):
             print_buffer = []
         elif opname == "RETURN_VALUE":
             _print(indent, "return", _pop(stack))
+        elif opname == "COMPARE_OP":
+            tos, tos1 = _pop(stack), _pop(stack)
+            compare = " ".join((tos1, arg, tos))
+            _push(stack, compare)
+        elif opname == "POP_JUMP_IF_FALSE":
+            test = _pop(stack)
+            _print(indent, "if {0}:".format(test))
+            block_dedent_at.append(arg)
+            block_else_at.append(arg)
+            indent += 4
+        elif opname == "JUMP_ABSOLUTE":
+            block_dedent_at.append(i)
+        elif opname == "JUMP_FORWARD":
+            block_dedent_at.append(i + arg)
         else:
             raise NotImplementedError(opname, arg, stack)
 
@@ -120,8 +156,30 @@ if __name__ == "__main__":
         ex_dict = {d: e, f: False, "testing": g}
         return ex_dict
 
-    def f2():
-        pass
+    def f2(a, b, c):
+        if cmp1:
+            line1
+            if cmp2:
+                line2
+            elif cmp3:
+                line3
+            elif cmp4:
+                line4
+            else:
+                line5
+            line6
+        else:
+            line7
+        line8
+        if cmp4:
+            line9
+        if cmp5:
+            if cmp6:
+                if cmp7:
+                    if cmp8:
+                        if cmp9:
+                            line10
+        return line11
 
     prettify_function(f1)
     print
