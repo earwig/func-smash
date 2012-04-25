@@ -29,9 +29,17 @@ def prettify_code(codeobj, indent=0):
             codes.append((code, arg))
         else:
             codes.append((code, None))
-    _print_codestring(codes, indent)
 
-def _print_codestring(codes, indent):
+    lines = _parse_codestring(codes)
+    for i, line in enumerate(lines):
+        added_indent, code = line[0], line[1:]
+        if code[-1].endswith(":") and lines[i+1][0] <= added_indent:
+            continue
+        _print(indent + added_indent, *code)
+
+def _parse_codestring(codes):
+    indent = 0
+    lines = []
     stack = []
     print_buffer = []
     block_dedent_at = []
@@ -50,9 +58,8 @@ def _print_codestring(codes, indent):
                 block_dedent_at.remove(x)
         for x in block_else_at:
             if i >= x:
-                _print(indent, "else:")
+                lines.append((indent, "else:"))
                 indent += 4
-                _print(indent, "pass")
                 block_else_at.remove(x)
         _print(indent, i, opname, arg, debug=True)
         if opname in OP_HASLOAD:
@@ -70,7 +77,7 @@ def _print_codestring(codes, indent):
         elif opname == "BUILD_MAP":
             _push(stack, "{}")
         elif opname == "STORE_FAST":
-            _print(indent, arg, "=", _pop(stack))
+            lines.append((indent, arg, "=", _pop(stack)))
         elif opname == "STORE_MAP":
             key, value = _pop(stack), _pop(stack)
             pair = ": ".join((key, value))
@@ -85,7 +92,7 @@ def _print_codestring(codes, indent):
             new_tos = tos + "." + arg
             _push(stack, new_tos)
         elif opname == "POP_TOP":
-            _print(indent, _pop(stack))
+            lines.append((indent, _pop(stack)))
         elif opname == "CALL_FUNCTION":
             numargs, numkwargs = arg
             args = []
@@ -101,17 +108,17 @@ def _print_codestring(codes, indent):
         elif opname == "PRINT_ITEM":
             print_buffer.append(_pop(stack))
         elif opname == "PRINT_NEWLINE":
-            _print(indent, "print", ", ".join(print_buffer))
+            lines.append((indent, "print", ", ".join(print_buffer)))
             print_buffer = []
         elif opname == "RETURN_VALUE":
-            _print(indent, "return", _pop(stack))
+            lines.append((indent, "return", _pop(stack)))
         elif opname == "COMPARE_OP":
             tos, tos1 = _pop(stack), _pop(stack)
             compare = " ".join((tos1, arg, tos))
             _push(stack, compare)
         elif opname == "POP_JUMP_IF_FALSE":
             test = _pop(stack)
-            _print(indent, "if {0}:".format(test))
+            lines.append((indent, "if {0}:".format(test)))
             block_dedent_at.append(arg)
             block_else_at.append(arg)
             indent += 4
@@ -121,6 +128,7 @@ def _print_codestring(codes, indent):
             block_dedent_at.append(i + arg)
         else:
             raise NotImplementedError(opname, arg, stack)
+    return lines
 
 def _get_func_args(func):
     codeobj = func.__code__
