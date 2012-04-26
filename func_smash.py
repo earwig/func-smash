@@ -7,6 +7,8 @@ import re
 import sys
 import types
 
+import prettify
+
 OPMAP = opcode.opmap
 OP_HASBUILD = [OPMAP[n] for n in ("BUILD_TUPLE", "BUILD_LIST", "BUILD_MAP",
                                   "BUILD_SET")]
@@ -192,6 +194,8 @@ def _demo(corpus, arg=12.0):
     print "Using {0}-function corpus.".format(len(corpus))
     print "Smashed function disassembly:"
     print_function(func)
+    print "\nFunction as python code:"
+    prettify.prettify_function(func, indent=4)
 
     if not len(sys.argv) > 2 or "n" not in "".join(sys.argv[2:]):
         print

@@ -10,10 +10,12 @@ OP_HASBINARY = {"BINARY_ADD": "+", "BINARY_SUBTRACT": "-",
 OP_HASBUILD = {"BUILD_TUPLE": ("(", ")"), "BUILD_LIST": ("[", "]"),
                "BUILD_SET": ("{", "}")}
 
+TAB = 4
+
 def prettify_function(func, indent=0):
     args = _get_func_args(func)
     _print(indent, "def {0}({1}):".format(func.func_name, args))
-    prettify_code(func.__code__, indent=indent+4)
+    prettify_code(func.__code__, indent=indent+TAB)
 
 def prettify_code(codeobj, indent=0):
     codes = []
@@ -30,11 +32,16 @@ def prettify_code(codeobj, indent=0):
         else:
             codes.append((code, None))
 
+    skip_next_line = False
     lines = _parse_codestring(codes)
     for i, line in enumerate(lines):
-        added_indent, code = line[0], line[1:]
-        if code[-1].endswith(":") and lines[i+1][0] <= added_indent:
+        if skip_next_line:
+            skip_next_line = False
             continue
+        added_indent, code = line[0], line[1:]
+        if code[0] == "else:" and lines[i+2][0] >= added_indent:
+            # Remove the automatic "pass" after each "if" as it's not needed
+            skip_next_line = True
         _print(indent + added_indent, *code)
 
 def _parse_codestring(codes):
@@ -54,12 +61,13 @@ def _parse_codestring(codes):
             i += 1
         for x in block_dedent_at:
             if i >= x:
-                indent -= 4
+                indent -= TAB
                 block_dedent_at.remove(x)
         for x in block_else_at:
             if i >= x:
                 lines.append((indent, "else:"))
-                indent += 4
+                indent += TAB
+                lines.append((indent, "pass"))
                 block_else_at.remove(x)
         _print(indent, i, opname, arg, debug=True)
         if opname in OP_HASLOAD:
@@ -118,10 +126,11 @@ def _parse_codestring(codes):
             _push(stack, compare)
         elif opname == "POP_JUMP_IF_FALSE":
             test = _pop(stack)
-            lines.append((indent, "if {0}:".format(test)))
             block_dedent_at.append(arg)
             block_else_at.append(arg)
-            indent += 4
+            lines.append((indent, "if {0}:".format(test)))
+            indent += TAB
+            lines.append((indent, "pass".format(test)))
         elif opname == "JUMP_ABSOLUTE":
             block_dedent_at.append(i)
         elif opname == "JUMP_FORWARD":
