@@ -3,11 +3,21 @@ import sys
 
 import func_smash
 
-OP_HASLOAD = {"LOAD_CONST": True, "LOAD_FAST": False, "LOAD_GLOBAL": False}
-OP_HASBINARY = {"BINARY_ADD": "+", "BINARY_SUBTRACT": "-",
-                "BINARY_MULTIPLY": "*", "BINARY_DIVIDE": "/",
-                "BINARY_POWER": "**", "BINARY_MODULO": "%"}
-OP_HASBUILD = {"BUILD_TUPLE": ("(", ")"), "BUILD_LIST": ("[", "]"),
+OP_LOAD = {"LOAD_CONST": True, "LOAD_FAST": False, "LOAD_GLOBAL": False}
+OP_BINARY = {"BINARY_POWER": "**", "BINARY_MULTIPLY": "*",
+             "BINARY_DIVIDE": "/", "BINARY_MODULO": "%", "BINARY_ADD": "+",
+             "BINARY_SUBTRACT": "-", "BINARY_FLOOR_DIVIDE": "//",
+             "BINARY_TRUE_DIVIDE": "/", "BINARY_LSHIFT": "<<",
+             "BINARY_RSHIFT": ">>", "BINARY_AND": "&", "BINARY_XOR": "^",
+             "BINARY_OR": "|"}
+OP_INPLACE = {"INPLACE_FLOOR_DIVIDE": "//", "INPLACE_TRUE_DIVIDE": "/",
+              "INPLACE_ADD": "+", "INPLACE_SUBTRACT": "-",
+              "INPLACE_MULTIPLY": "*", "INPLACE_DIVIDE": "/",
+              "INPLACE_MODULO": "%", "INPLACE_POWER": "**",
+              "INPLACE_LSHIFT": "<<", "INPLACE_RSHIFT": ">>",
+              "INPLACE_AND": "&", "INPLACE_XOR": "^", "INPLACE_OR": "|"}
+OP_SUBSCR = ("BINARY_SUBSCR", "INPLACE_SUBSCR")
+OP_BUILD = {"BUILD_TUPLE": ("(", ")"), "BUILD_LIST": ("[", "]"),
                "BUILD_SET": ("{", "}")}
 
 TAB = 4
@@ -70,17 +80,23 @@ def _parse_codestring(codes):
                 lines.append((indent, "pass"))
                 block_else_at.remove(x)
         _print(indent, i, opname, arg, debug=True)
-        if opname in OP_HASLOAD:
-            _push(stack, arg, literal=OP_HASLOAD[opname])
-        elif opname in OP_HASBINARY:
+        if opname in OP_LOAD:
+            _push(stack, arg, literal=OP_LOAD[opname])
+        elif opname in OP_BINARY:
             tos, tos1 = _pop(stack), _pop(stack)
-            _push(stack, " ".join((tos1, OP_HASBINARY[opname], tos)))
-        elif opname in OP_HASBUILD:
+            _push(stack, " ".join((tos1, OP_BINARY[opname], tos)))
+        elif opname in OP_INPLACE:  # Works, but doesn't use inplace op magic
+            tos, tos1 = _pop(stack), _pop(stack)
+            _push(stack, " ".join((tos1, OP_INPLACE[opname], tos)))
+        elif opname in OP_SUBSCR:
+            tos, tos1 = _pop(stack), _pop(stack)
+            _push(stack, "{0}[{1}]".format(tos1, tos))
+        elif opname in OP_BUILD:
             args = []
             for i in xrange(arg):
                 args.append(_pop(stack))
             args.reverse()
-            start, end = OP_HASBUILD[opname]
+            start, end = OP_BUILD[opname]
             _push(stack, start + ", ".join(args) + end)
         elif opname == "BUILD_MAP":
             _push(stack, "{}")
