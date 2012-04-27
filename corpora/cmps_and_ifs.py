@@ -6,4 +6,8 @@ def f2(a):
         return True
     return False
 
-corpus = [f1, f2]
+def f3(a):
+    if a <= 20:
+        return True
+    return False
+corpus = [f1, f2, f3]
