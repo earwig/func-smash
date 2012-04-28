@@ -147,6 +147,13 @@ def _parse_codestring(codes):
             lines.append((indent, "if {0}:".format(test)))
             indent += TAB
             lines.append((indent, "pass".format(test)))
+        elif opname == "POP_JUMP_IF_TRUE":
+            test = _pop(stack)
+            block_dedent_at.append(arg)
+            block_else_at.append(arg)
+            lines.append((indent, "if not ({0}):".format(test)))
+            indent += TAB
+            lines.append((indent, "pass".format(test)))
         elif opname == "JUMP_ABSOLUTE":
             block_dedent_at.append(i)
         elif opname == "JUMP_FORWARD":
