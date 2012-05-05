@@ -67,8 +67,8 @@ def print_function(func):
     i = 0
     while i < length:
         code = ord(codestring[i])
+        print opcode.opname[code].rjust(20), str(i).rjust(3),
         i += 1
-        print opcode.opname[code].rjust(20),
         if code >= opcode.HAVE_ARGUMENT:
             arg = _get_argument(codeobj, codestring, i, code)
             i += 2

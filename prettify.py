@@ -42,125 +42,8 @@ def prettify_code(codeobj, indent=0):
         else:
             codes.append((code, None))
 
-    skip_next_line = False
-    lines = _parse_codestring(codes)
-    for i, line in enumerate(lines):
-        if skip_next_line:
-            skip_next_line = False
-            continue
-        added_indent, code = line[0], line[1:]
-        if code[0] == "else:" and lines[i+2][0] >= added_indent:
-            # Remove the automatic "pass" after each "if" as it's not needed
-            skip_next_line = True
-        _print(indent + added_indent, *code)
-
-def _parse_codestring(codes):
-    indent = 0
-    lines = []
-    stack = []
-    print_buffer = []
-    block_dedent_at = []
-    block_else_at = []
-    i = 0
-    for instruction in codes:
-        code, arg = instruction
-        opname = opcode.opname[code]
-        if code >= opcode.HAVE_ARGUMENT:
-            i += 3
-        else:
-            i += 1
-        for x in block_dedent_at:
-            if i >= x:
-                indent -= TAB
-                block_dedent_at.remove(x)
-        for x in block_else_at:
-            if i >= x:
-                lines.append((indent, "else:"))
-                indent += TAB
-                lines.append((indent, "pass"))
-                block_else_at.remove(x)
-        _print(indent, i, opname, arg, debug=True)
-        if opname in OP_LOAD:
-            _push(stack, arg, literal=OP_LOAD[opname])
-        elif opname in OP_BINARY:
-            tos, tos1 = _pop(stack), _pop(stack)
-            _push(stack, " ".join((tos1, OP_BINARY[opname], tos)))
-        elif opname in OP_INPLACE:  # Works, but doesn't use inplace op magic
-            tos, tos1 = _pop(stack), _pop(stack)
-            _push(stack, " ".join((tos1, OP_INPLACE[opname], tos)))
-        elif opname in OP_SUBSCR:
-            tos, tos1 = _pop(stack), _pop(stack)
-            _push(stack, "{0}[{1}]".format(tos1, tos))
-        elif opname in OP_BUILD:
-            args = []
-            for i in xrange(arg):
-                args.append(_pop(stack))
-            args.reverse()
-            start, end = OP_BUILD[opname]
-            _push(stack, start + ", ".join(args) + end)
-        elif opname == "BUILD_MAP":
-            _push(stack, "{}")
-        elif opname == "STORE_FAST":
-            lines.append((indent, arg, "=", _pop(stack)))
-        elif opname == "STORE_MAP":
-            key, value = _pop(stack), _pop(stack)
-            pair = ": ".join((key, value))
-            oldmap = _pop(stack)
-            if oldmap == "{}":
-                newmap = "{" + pair + "}"
-            else:
-                newmap = oldmap[:-1] + ", " + pair + "}"
-            _push(stack, newmap)
-        elif opname == "LOAD_ATTR":
-            tos = _pop(stack)
-            new_tos = tos + "." + arg
-            _push(stack, new_tos)
-        elif opname == "POP_TOP":
-            lines.append((indent, _pop(stack)))
-        elif opname == "CALL_FUNCTION":
-            numargs, numkwargs = arg
-            args = []
-            for i in xrange(numkwargs):
-                value = _pop(stack)
-                key = _pop(stack, never_literal=True)
-                args.append("=".join((key, value)))
-            for i in xrange(numargs):
-                args.append(_pop(stack))
-            args.reverse()
-            funcname = _pop(stack)
-            _push(stack, "{0}({1})".format(funcname, ", ".join(args)))
-        elif opname == "PRINT_ITEM":
-            print_buffer.append(_pop(stack))
-        elif opname == "PRINT_NEWLINE":
-            lines.append((indent, "print", ", ".join(print_buffer)))
-            print_buffer = []
-        elif opname == "RETURN_VALUE":
-            lines.append((indent, "return", _pop(stack)))
-        elif opname == "COMPARE_OP":
-            tos, tos1 = _pop(stack), _pop(stack)
-            compare = " ".join((tos1, arg, tos))
-            _push(stack, compare)
-        elif opname == "POP_JUMP_IF_FALSE":
-            test = _pop(stack)
-            block_dedent_at.append(arg)
-            block_else_at.append(arg)
-            lines.append((indent, "if {0}:".format(test)))
-            indent += TAB
-            lines.append((indent, "pass".format(test)))
-        elif opname == "POP_JUMP_IF_TRUE":
-            test = _pop(stack)
-            block_dedent_at.append(arg)
-            block_else_at.append(arg)
-            lines.append((indent, "if not ({0}):".format(test)))
-            indent += TAB
-            lines.append((indent, "pass".format(test)))
-        elif opname == "JUMP_ABSOLUTE":
-            block_dedent_at.append(i)
-        elif opname == "JUMP_FORWARD":
-            block_dedent_at.append(i + arg)
-        else:
-            raise NotImplementedError(opname, arg, stack)
-    return lines
+    block = _parse_codestring(codes)
+    block.display(indent)
 
 def _get_func_args(func):
     codeobj = func.__code__
@@ -169,12 +52,111 @@ def _get_func_args(func):
         return ""
     return ", ".join([arg for arg in codeobj.co_varnames[:count]])
 
-def _push(stack, item, literal=False):
-    stack.append((item, literal))
+def _parse_codestring(codes):
+    stack = Stack()
+    print_buffer = []
+    main_block = block = Block()
+    i2block = {}
+    drops = []
+    elses = []
+    i = 0
+    for instruction in codes:
+        code, arg = instruction
+        opname = opcode.opname[code]
+        while i in elses:
+            elses.remove(i)
+            block.toggle()
+        while i in drops:
+            drops.remove(i)
+            block = block.parent()
+        i2block[i] = block
+        if code >= opcode.HAVE_ARGUMENT:
+            i += 3
+        else:
+            i += 1
+        if opname in OP_LOAD:
+            stack.push(arg, is_literal=OP_LOAD[opname])
+        elif opname in OP_BINARY:
+            tos, tos1 = stack.pop(), stack.pop()
+            stack.push(" ".join((tos1, OP_BINARY[opname], tos)))
+        elif opname in OP_INPLACE:  # Works, but doesn't use inplace op magic
+            tos, tos1 = stack.pop(), stack.pop()
+            stack.push(" ".join((tos1, OP_INPLACE[opname], tos)))
+        elif opname in OP_SUBSCR:
+            tos, tos1 = stack.pop(), stack.pop()
+            stack.push("{0}[{1}]".format(tos1, tos))
+        elif opname in OP_BUILD:
+            args = []
+            for i in xrange(arg):
+                args.append(stack.pop())
+            args.reverse()
+            start, end = OP_BUILD[opname]
+            stack.push(start + ", ".join(args) + end)
+        elif opname == "BUILD_MAP":
+            stack.push("{}")
+        elif opname == "STORE_FAST":
+            block.put(arg, "=", stack.pop())
+        elif opname == "STORE_MAP":
+            key, value = stack.pop(), stack.pop()
+            pair = ": ".join((key, value))
+            oldmap = stack.pop()
+            if oldmap == "{}":
+                newmap = "{" + pair + "}"
+            else:
+                newmap = oldmap[:-1] + ", " + pair + "}"
+            stack.push(newmap)
+        elif opname == "LOAD_ATTR":
+            tos = stack.pop()
+            new_tos = tos + "." + arg
+            stack.push(new_tos)
+        elif opname == "POP_TOP":
+            block.put(stack.pop())
+        elif opname == "CALL_FUNCTION":
+            numargs, numkwargs = arg
+            args = []
+            for i in xrange(numkwargs):
+                value = stack.pop()
+                key = stack.pop(never_literal=True)
+                args.append("=".join((key, value)))
+            for i in xrange(numargs):
+                args.append(stack.pop())
+            args.reverse()
+            funcname = stack.pop()
+            stack.push("{0}({1})".format(funcname, ", ".join(args)))
+        elif opname == "PRINT_ITEM":
+            print_buffer.append(stack.pop())
+        elif opname == "PRINT_NEWLINE":
+            block.put("print", ", ".join(print_buffer))
+            print_buffer = []
+        elif opname == "RETURN_VALUE":
+            block.put("return", stack.pop())
+        elif opname == "COMPARE_OP":
+            tos, tos1 = stack.pop(), stack.pop()
+            compare = " ".join((tos1, arg, tos))
+            stack.push(compare)
+        elif opname == "POP_JUMP_IF_FALSE":
+            block = block.child()
+            block.split(stack.pop())
+            elses.append(arg)
+        elif opname == "POP_JUMP_IF_TRUE":
+            block = block.child()
+            block.split(stack.pop())
+            elses.append(arg)
+        elif opname == "JUMP_ABSOLUTE":
+            if arg < i:
+                block = block.parent()
+            else:
+                drops.append(arg)
+        elif opname == "JUMP_FORWARD":
+            drops.append(arg + i)
+        elif opname == "SETUP_LOOP":
+            block = block.child(loop=True)
+        elif opname == "POP_BLOCK":
+            block = block.parent()
+        else:
+            raise NotImplementedError(opname, arg, stack)
 
-def _pop(stack, never_literal=False):
-    item, literal = stack.pop()
-    return repr(item) if literal and not never_literal else item
+    return main_block
 
 def _print(indentation, *args, **kwargs):
     argstring = " ".join([str(arg) for arg in args if str(arg)])
@@ -184,6 +166,95 @@ def _print(indentation, *args, **kwargs):
             print " " * 50 + "#", argstring
         return
     print " " * indentation + argstring
+
+
+class Stack(object):
+    def __init__(self):
+        self._items = []
+
+    def __iter__(self):
+        while self._items:
+            yield self.pop()
+
+    def __repr__(self):
+        s = reversed([repr(itm) if lit else itm for itm, lit in self._items])
+        return "Stack[" + ", ".join(s) + "]"
+
+    def push(self, item, is_literal=False):
+        self._items.append((item, is_literal))
+
+    def pop(self, never_literal=False):
+        item, is_literal = self._items.pop()
+        return repr(item) if is_literal and not never_literal else item
+
+
+class Block(object):
+    def __init__(self, parent=None, loop=False):
+        self._parent = parent
+        self._loop = loop
+        self._true_block = self._focus = []
+        self._false_block = []
+        self._split = None
+
+    def __iter__(self):
+        for item in self._render_lines():
+            yield item[1]
+
+    def __repr__(self):
+        return str([item[1] for item in self._render_lines()])
+
+    def _has_lines(self):
+        return self._split or self._true_block or self._false_block
+
+    def _render_subblock(self, block, lines, indent):
+        for item in block:
+            if isinstance(item, Block):
+                lines += item._render_lines(indent)
+            else:
+                lines.append((indent, item))
+
+    def _render_lines(self, indent=0):
+        lines = []
+        if self._split:
+            lines.append((indent, (self._split,)))
+            indent += TAB
+        self._render_subblock(self._true_block, lines, indent)
+        if self._false_block:
+            lines.append((indent - TAB, ("else:",)))
+            self._render_subblock(self._false_block, lines, indent)
+        return lines
+
+    def child(self, loop=False):
+        if self._loop and not loop and not self._has_lines():
+            loop = True 
+        child = Block(parent=self, loop=loop)
+        self._focus.append(child)
+        return child
+
+    def parent(self):
+        if self._parent:
+            return self._parent
+        raise RuntimeError("Popping an orphaned block")
+
+    def put(self, *code):
+        self._focus.append(code)
+
+    def split(self, test):
+        if self._loop:
+            self._split = "while " + test + ":"
+        else:
+            self._split = "if " + test + ":"
+
+    def toggle(self):
+        if self._focus is self._true_block:
+            self._focus = self._false_block
+        else:
+            self._focus = self._true_block
+
+    def display(self, indent=0):
+        for indent, code in self._render_lines(indent):
+            _print(indent, *code)
+
 
 if __name__ == "__main__":
     def f1(a):
@@ -221,6 +292,23 @@ if __name__ == "__main__":
                             line10
         return line11
 
+    def f3(x, y):
+        if cmp1:
+            while cmp1:
+                if cmp2:
+                    while cmp3:
+                        line1
+        else:
+            while cmp4:
+                line2
+                line3
+                line4
+                if cmp5:
+                    line5
+        return line6
+
     prettify_function(f1)
     print
     prettify_function(f2)
+    print
+    prettify_function(f3)

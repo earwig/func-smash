@@ -10,4 +10,5 @@ def f3(a):
     if a <= 20:
         return True
     return False
+
 corpus = [f1, f2, f3]
