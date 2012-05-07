@@ -1,10 +1,10 @@
+from argparse import ArgumentParser
 from code import interact
 import imp
 import opcode
 import os
 import random
 import re
-import sys
 import types
 
 import prettify
@@ -90,18 +90,44 @@ def print_function(func):
             print
 
 def run():
-    try:
-        path, name = os.path.split(sys.argv[1])
-        name = re.sub("\.pyc?$", "", name)
-    except IndexError:
-        raise RuntimeError("Needs a filename as a command-line argument")
+    parser = ArgumentParser(prog="func-smash",
+                            description="Smash functions together!")
+    parser.add_argument("path", metavar="path", help="path to the corpus file")
+    parser.add_argument("-n", "--no-run", action="store_true",
+                        help="don't run the function after smashing it")
+    parser.add_argument("-i", "--interpret", action="store_true",
+                        help="open a interpreter session after smashing")
+    parser.add_argument("-p", "--prettify", action="store_true",
+                        help="prettify the function after smashing it")
+    args = parser.parse_args()
+
+    path, name = os.path.split(args.path)
+    name = re.sub("\.pyc?$", "", name)
     file_obj, path, desc = imp.find_module(name, [path])
     try:
         module = imp.load_module(name, file_obj, path, desc)
     finally:
         file_obj.close()
 
-    _demo(module.corpus)
+    corpus = module.corpus
+    chain = make_chain(corpus)
+    func = make_function(chain, "func")
+    print "Using {0}-function corpus.".format(len(corpus))
+    print "Smashed function disassembly:"
+    print_function(func)
+    
+    if args.prettify:
+        print "\nFunction as python code:"
+        prettify.prettify_function(func, indent=4)
+
+    if not args.no_run:
+        arg = 12
+        print
+        print "func({0}) =".format(arg), func(arg)
+
+    if args.interpret:
+        variables = dict(globals().items() + locals().items())
+        interact(banner="", local=variables)
 
 def _parse_func(func, chain):
     codeobj = func.__code__
@@ -187,23 +213,6 @@ def _opcode_to_opname(code):
 def _coerce_arg_into_codes(codes, arg):
     codes.append(arg % 256)
     codes.append(arg // 256)
-
-def _demo(corpus, arg=12.0):
-    chain = make_chain(corpus)
-    func = make_function(chain, "func")
-    print "Using {0}-function corpus.".format(len(corpus))
-    print "Smashed function disassembly:"
-    print_function(func)
-    print "\nFunction as python code:"
-    prettify.prettify_function(func, indent=4)
-
-    if not len(sys.argv) > 2 or "n" not in "".join(sys.argv[2:]):
-        print
-        print "func({0}) =".format(arg), func(arg)
-
-    if len(sys.argv) > 2 and "i" in "".join(sys.argv[2:]):
-        variables = dict(globals().items() + locals().items())
-        interact(banner="", local=variables)
 
 if __name__ == "__main__":
     run()
